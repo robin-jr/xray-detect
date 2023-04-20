@@ -4,6 +4,11 @@ import cv2
 import numpy as np
 import roboflow
 from flask import Flask, request
+import openai
+import json
+
+openai.organization = "org-KGUkeR1rxambDb4iwt39rRQR"
+openai.api_key = "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"
 
 rf = roboflow.Roboflow(api_key='3ExsCVK8YEvuuYeNcGnS')
 
@@ -20,7 +25,23 @@ def predict(image_url):
         predictions=prediction.json()['predictions'],
         output_path='static/prediction.jpg'
     )
-    return True
+    prompt= "Give a brief diagnosis for this image based on json prediction data: "
+    j = prediction.json()
+    j['predictions'] = j['predictions'][:4]
+    prompt += json.dumps(j)
+    response = openai.Completion.create(
+      model="text-davinci-003",
+      prompt=prompt,
+      temperature=0.7,
+      max_tokens=256,
+      top_p=1,
+      frequency_penalty=0,
+      presence_penalty=0
+    )
+    print(response)
+    print(response['choices'][0]['text'])
+    res = response['choices'][0]['text']
+    return res
 
 
 def load_image(image_path):
@@ -46,12 +67,10 @@ def save_image(image, predictions, output_path):
             stroke_color = hex_to_rgb(colors[class_name][1:])
         points = [[int(p["x"]), int(p["y"])] for p in prediction["points"]]
         np_points = np.array(points, dtype=np.int32)
-        cv2.polylines(
+        cv2.fillPoly(
             image,
             [np_points],
-            isClosed=True,
-            color=stroke_color,
-            thickness=1,
+            color=stroke_color
         )
     # Write image path
     cv2.imwrite(output_path, image)
@@ -67,7 +86,7 @@ def hello_world():
     return '''
     <html>
    <body>
-      <form action = "http://localhost:6003/uploader" method = "POST" 
+      <form action = "/uploader" method = "POST" 
          enctype = "multipart/form-data">
          <input type = "file" name = "file" />
          <input type = "submit"/>
@@ -79,11 +98,12 @@ def hello_world():
 
 @app.route('/uploader', methods=['GET', 'POST'])
 def upload_file():
+    res = "prediction"
     if request.method == 'POST':
         f = request.files['file']
         f.save("./static/test.jpg")
-        predict("./static/test.jpg")
-        return '''
+        res = predict("./static/test.jpg")
+        return f'''
         <html>
         <body>
           <div style='display:flex;gap:10px;'>
@@ -94,12 +114,13 @@ def upload_file():
             <div>
               <p>Predicted Image</p>
               <img src="/prediction.jpg" alt="prediction.jpg"/>
+              <p> {res} </p>
             </div>
           </div>
         </body>
         </html>
         '''
-    return '''
+    return f'''
         <html>
         <body>
           <div style='display:flex;gap:10px;'>
@@ -110,6 +131,7 @@ def upload_file():
             <div>
               <p>Predicted Image</p>
               <img src="/prediction.jpg" alt="prediction.jpg"/>
+              <p> {res} </p>
             </div>
           </div>
         </body>
